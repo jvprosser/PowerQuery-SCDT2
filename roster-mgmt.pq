@@ -64,9 +64,8 @@ let
 ,
 
     RenameNewInsertColumns =  Table.RenameColumns(Removed_Columns,
-       {{"HR Employee ID","Employee ID"},{"HR Worker","Worker"},{"HR Hire Date","Hire Date"},
-        {"HR Business Title","Business Title"},
-       {"HR Current Work Email","Current Work Email"},{ "HR Workers Managers","Worker's Manager(s)"}}), 
+       {{"HR Employee ID","Employee ID"}, {"HR Worker","Worker"}, {"HR Hire Date","Hire Date"}, {"HR Business Title","Business Title"},
+       {"HR Current Work Email","Current Work Email"}, { "HR Workers Managers","Worker's Manager(s)"}}), 
 
 
     UpdateDataStartDate = Table.AddColumn(RenameNewInsertColumns, "Data_Start_Date", each DateTime.Date(DateTime.LocalNow()), type date),
@@ -122,25 +121,25 @@ let
 		   newNote =
 		       Text.Combine(
 			   List.RemoveNulls({
-			       if not Value.NullableEquals([Worker], [HR Worker]) then "Worker" else null,
-			       if not Value.NullableEquals([Business Title], [HR Business Title]) then "Business Title" else null,
-			       if not Value.NullableEquals([Current Work Email], [HR Current Work Email]) then "Current Work Email" else null,
-			       if not Value.NullableEquals([#"Worker's Manager(s)"], [#"HR Worker's Manager(s)"]) then "Worker's Manager(s)" else null
+			       if not Value.NullableEquals([Worker], [HR Worker]) then "Worker Name Change" else null,
+			       if not Value.NullableEquals([Business Title], [HR Business Title]) then "Business Title Change" else null,
+			       if not Value.NullableEquals([Current Work Email], [HR Current Work Email]) then "Current Work Email Change" else null,
+			       if not Value.NullableEquals([#"Worker's Manager(s)"], [#"HR Worker's Manager(s)"]) then "Worker's Manager(s) Change" else null
 			   }),
 			   ", "
 		       )
 	       in
-
-	       if Text.Length(newNote) > 0 then
-		 if [Note] = null then  newNote
-		 else if Text.Length([Note]) = 0 then newNote
-		 else [Note] & "; "& newNote
-	       else [Note],
+           newNote,
+//	       if Text.Length(newNote) > 0 then
+//		 if [Note] = null then  newNote
+//		 else if Text.Length([Note]) = 0 then newNote
+//		 else [Note] & "; "& newNote
+//	       else [Note],
       type text ),
 
 
 // remove the new columns from HR since these are the originals and we keep thier values
-    Expired_Remove_Columns = Table.RemoveColumns(RecordsWithDifferences, {"HR Worker",  "HR Business Title", "HR Current Work Email", "HR Worker's Manager(s)","Data_End_Date"}),
+    Expired_Remove_Columns = Table.RemoveColumns(RecordsWithDifferences, {"HR Worker",  "HR Business Title", "HR Current Work Email", "HR Worker's Manager(s)","Data_End_Date","Note_updated"}),
 
 // Add a data end date of yesterday to expire the record
     Expired_versions_final = Table.AddColumn(Expired_Remove_Columns, "Data_End_Date", each Date.AddDays(Date.From(DateTime.LocalNow()), -1), type date),
@@ -149,13 +148,13 @@ let
     
 
   // now make a copy of the same records but we remove the original values and put the new ones from HR in
-    NewVersions = RecordsWithDifferences, 
-
+    NewVersions = RecordsWithDifferences,
+ 
    NewVersions_Removed_Columns = Table.RemoveColumns(NewVersions,
      { "Data_Start_Date","Note","Worker","Business Title","Current Work Email","Worker's Manager(s)"}),
 
 
-       NewVersions_Rename_Columns =  Table.RenameColumns(NewVersions_Removed_Columns,
+    NewVersions_Rename_Columns =  Table.RenameColumns(NewVersions_Removed_Columns,
        {{"HR Worker","Worker"}, {"HR Business Title","Business Title"},{"Note_updated","Note"},
        {"HR Current Work Email","Current Work Email"},{ "HR Worker's Manager(s)","Worker's Manager(s)"}}), 
 
@@ -166,8 +165,7 @@ let
     // Filter the Current Snapshot to get the rows corresponding to the changed employees
     ChangedIDs = RecordsToExpire[Employee ID],
 
-    ChangedIDsTable = Table.FromList(ChangedIDs, Splitter.SplitByNothing(), {"Employee ID"}),
-
+    ChangedIDsTable = Table.FromList(ChangedIDs, Splitter.SplitByNothing(), {"Employee ID"}), 
 
     // 3. Identify Unchanged Records (Records that stay active)
     // The logic is now a direct comparison between the historical column and the new expanded column.
@@ -183,7 +181,7 @@ let
         )
     ),
 
-    Unchanged_RemoveHR_Columns = Table.RemoveColumns(UnchangedRecords, {"HR Worker",  "HR Business Title", "HR Current Work Email", "HR Worker's Manager(s)","Data_End_Date","Note"}),
+    Unchanged_RemoveHR_Columns = Table.RemoveColumns(UnchangedRecords, {"HR Worker",  "HR Business Title", "HR Current Work Email", "HR Worker's Manager(s)","Data_End_Date"}),
 
     // Select the existing historical columns only
     Unchanged_Final = Unchanged_RemoveHR_Columns, //Table.SelectColumns(RecordsToKeep, {"Employee ID", "Worker", "Business Title", "Current Work Email", "Worker's Manager(s)", "Effective_Start_Date", "Effective_End_Date", "Data_Start_Date", "Data_End_Date"}),
@@ -216,7 +214,7 @@ let
     TermExp_Result = Table.RemoveColumns(TermExp_JoinedRecords, {"TermRecs"}),
 
 
-   TermExp_Remove_Columns = Table.RemoveColumns(TermExp_Result, {"Term","Data_End_Date","Note"}),
+   TermExp_Remove_Columns = Table.RemoveColumns(TermExp_Result, {"Term","Data_End_Date"}),
 
      TermExp_UpdateDataEndDate = Table.AddColumn(TermExp_Remove_Columns, "Data_End_Date", each Date.AddDays(Date.From(DateTime.LocalNow()), -1), type date),
 
@@ -246,7 +244,8 @@ let
         each
         if [Note] = null then  "Termed"
         else if Text.Length([Note]) = 0 then "Termed"
-        else [Note] & "; Termed"
+        else "Termed"
+        //else [Note] & "; Termed" // We are not appending. the original note is in the expired record.
       ),
    Term_Remove_Columns = Table.RemoveColumns(TermExp_AppendToNote, {"Term","Data_Start_Date","Data_End_Date","Note"}),
 
