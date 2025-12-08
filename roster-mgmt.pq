@@ -144,22 +144,18 @@ let
 // Add a data end date of yesterday to expire the record
     Expired_versions_final = Table.AddColumn(Expired_Remove_Columns, "Data_End_Date", each Date.AddDays(Date.From(DateTime.LocalNow()), -1), type date),
 
-
-    
-
   // now make a copy of the same records but we remove the original values and put the new ones from HR in
-    NewVersions = RecordsWithDifferences,
+   NewVersions = RecordsWithDifferences,
  
    NewVersions_Removed_Columns = Table.RemoveColumns(NewVersions,
-     { "Data_Start_Date","Note","Worker","Business Title","Current Work Email","Worker's Manager(s)"}),
-
+     { "Data_Start_Date","Note","Worker","Business Title","Current Work Email","Worker's Manager(s)","Status"}),
 
     NewVersions_Rename_Columns =  Table.RenameColumns(NewVersions_Removed_Columns,
        {{"HR Worker","Worker"}, {"HR Business Title","Business Title"},{"Note_updated","Note"},
        {"HR Current Work Email","Current Work Email"},{ "HR Worker's Manager(s)","Worker's Manager(s)"}}), 
 
-
-    NewVersions_final = Table.AddColumn(NewVersions_Rename_Columns, "Data_Start_Date", each DateTime.Date(DateTime.LocalNow()), type date),
+    NewVersions_status = Table.AddColumn(NewVersions_Rename_Columns, "Status", each "Active", type text),
+    NewVersions_final = Table.AddColumn(NewVersions_status, "Data_Start_Date", each DateTime.Date(DateTime.LocalNow()), type date),
 
     // 2. Prepare New Active Records for the Changed Employees
     // Filter the Current Snapshot to get the rows corresponding to the changed employees
