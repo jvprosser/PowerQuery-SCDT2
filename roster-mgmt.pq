@@ -148,7 +148,7 @@ let
    NewVersions = RecordsWithDifferences,
  
    NewVersions_Removed_Columns = Table.RemoveColumns(NewVersions,
-     { "Data_Start_Date","Note","Worker","Business Title","Current Work Email","Worker's Manager(s)","Status"}),
+     { "Data_Start_Date","Note","Worker","Business Title","Current Work Email","Worker's Manager(s)","Status","Effective_Start_Date", "Effective_End_Date"}),
 
     NewVersions_Rename_Columns =  Table.RenameColumns(NewVersions_Removed_Columns,
        {{"HR Worker","Worker"}, {"HR Business Title","Business Title"},{"Note_updated","Note"},
