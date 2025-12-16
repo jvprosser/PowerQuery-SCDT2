@@ -28,7 +28,7 @@ let
 
     H_RenameColumns =  Table.RenameColumns(H_EID_Num,
        {{"Employee ID","HR Employee ID"},{"Worker","HR Worker"},{"Hire Date","HR Hire Date"},
-        {"Business Title","HR Business Title"},
+        {"Job Title","HR Job Title"},
        {"Current Work Email","HR Current Work Email"},{ "Worker's Manager(s)","HR Worker's Manager(s)"}}), 
 
 
@@ -55,16 +55,16 @@ let
     NewInsertsExpanded = Table.ExpandTableColumn(
         NewInserts,
         "NTC",
-          {"HR Employee ID","HR Worker", "HR Hire Date",  "HR Business Title", "HR Current Work Email", "HR Workers Managers"}
+          {"HR Employee ID","HR Worker", "HR Hire Date",  "HR Job Title", "HR Current Work Email", "HR Workers Managers"}
     ),
    Removed_Columns = Table.RemoveColumns(NewInsertsExpanded,
-  {"Employee ID","Worker", "Hire Date",  "Business Title", "Current Work Email", "Worker's Manager(s)",
+  {"Employee ID","Worker", "Hire Date",  "Job Title", "Current Work Email", "Worker's Manager(s)",
   "Data_Start_Date","Note"}
 )//"Effective_End_Date",
 ,
 
     RenameNewInsertColumns =  Table.RenameColumns(Removed_Columns,
-       {{"HR Employee ID","Employee ID"}, {"HR Worker","Worker"}, {"HR Hire Date","Hire Date"}, {"HR Business Title","Business Title"},
+       {{"HR Employee ID","Employee ID"}, {"HR Worker","Worker"}, {"HR Hire Date","Hire Date"}, {"HR Job Title","Job Title"},
        {"HR Current Work Email","Current Work Email"}, { "HR Workers Managers","Worker's Manager(s)"}}), 
 
 
@@ -90,11 +90,11 @@ let
     ),
     
     // Expand the current record columns and rename them to avoid conflict.
-    // The comparison columns are {"Worker", "Business Title", "Current Work Email", "Worker's Manager(s)"}
+    // The comparison columns are {"Worker", "Job Title", "Current Work Email", "Worker's Manager(s)"}
     ExpandedRecords = Table.ExpandTableColumn(
         JoinedRecords, 
         "CurrentRecord", 
-         {"HR Worker",  "HR Business Title", "HR Current Work Email", "HR Worker's Manager(s)"}
+         {"HR Worker",  "HR Job Title", "HR Current Work Email", "HR Worker's Manager(s)"}
     ),
 
     // Identify records that have CHANGED and need to be expired (Type 2 change)
@@ -105,7 +105,7 @@ let
         // Check for any difference in the comparison fields (OR condition)
         (
             [Worker] <> [HR Worker] or 
-            [Business Title] <> [HR Business Title] or 
+            [Job Title] <> [HR Job Title] or 
             [Current Work Email] <> [HR Current Work Email] or 
             [#"Worker's Manager(s)"] <> [#"HR Worker's Manager(s)"]
         )
@@ -122,7 +122,7 @@ let
 		       Text.Combine(
 			   List.RemoveNulls({
 			       if not Value.NullableEquals([Worker], [HR Worker]) then "Worker Name Change" else null,
-			       if not Value.NullableEquals([Business Title], [HR Business Title]) then "Business Title Change" else null,
+			       if not Value.NullableEquals([Job Title], [HR Job Title]) then "Job Title Change" else null,
 			       if not Value.NullableEquals([Current Work Email], [HR Current Work Email]) then "Current Work Email Change" else null,
 			       if not Value.NullableEquals([#"Worker's Manager(s)"], [#"HR Worker's Manager(s)"]) then "Worker's Manager(s) Change" else null
 			   }),
@@ -139,7 +139,7 @@ let
 
 
 // remove the new columns from HR since these are the originals and we keep thier values
-    Expired_Remove_Columns = Table.RemoveColumns(RecordsWithDifferences, {"HR Worker",  "HR Business Title", "HR Current Work Email", "HR Worker's Manager(s)","Data_End_Date","Note_updated"}),
+    Expired_Remove_Columns = Table.RemoveColumns(RecordsWithDifferences, {"HR Worker",  "HR Job Title", "HR Current Work Email", "HR Worker's Manager(s)","Data_End_Date","Note_updated"}),
 
 // Add a data end date of yesterday to expire the record
     Expired_versions_final = Table.AddColumn(Expired_Remove_Columns, "Data_End_Date", each Date.AddDays(Date.From(DateTime.LocalNow()), -1), type date),
@@ -148,10 +148,10 @@ let
    NewVersions = RecordsWithDifferences,
  
    NewVersions_Removed_Columns = Table.RemoveColumns(NewVersions,
-     { "Data_Start_Date","Note","Worker","Business Title","Current Work Email","Worker's Manager(s)","Status","Effective_Start_Date", "Effective_End_Date"}),
+     { "Data_Start_Date","Note","Worker","Job Title","Current Work Email","Worker's Manager(s)","Status","Effective_Start_Date", "Effective_End_Date"}),
 
     NewVersions_Rename_Columns =  Table.RenameColumns(NewVersions_Removed_Columns,
-       {{"HR Worker","Worker"}, {"HR Business Title","Business Title"},{"Note_updated","Note"},
+       {{"HR Worker","Worker"}, {"HR Job Title","Job Title"},{"Note_updated","Note"},
        {"HR Current Work Email","Current Work Email"},{ "HR Worker's Manager(s)","Worker's Manager(s)"}}), 
 
     NewVersions_status = Table.AddColumn(NewVersions_Rename_Columns, "Status", each "Active", type text),
@@ -171,16 +171,16 @@ let
         // Check for NO difference in the comparison fields (AND condition)
         (
             [Worker] = [HR Worker] and 
-            [Business Title] = [HR Business Title] and 
+            [Job Title] = [HR Job Title] and 
             [Current Work Email] = [HR Current Work Email] and 
             [#"Worker's Manager(s)"] = [#"HR Worker's Manager(s)"]
         )
     ),
 
-    Unchanged_RemoveHR_Columns = Table.RemoveColumns(UnchangedRecords, {"HR Worker",  "HR Business Title", "HR Current Work Email", "HR Worker's Manager(s)","Data_End_Date"}),
+    Unchanged_RemoveHR_Columns = Table.RemoveColumns(UnchangedRecords, {"HR Worker",  "HR Job Title", "HR Current Work Email", "HR Worker's Manager(s)","Data_End_Date"}),
 
     // Select the existing historical columns only
-    Unchanged_Final = Unchanged_RemoveHR_Columns, //Table.SelectColumns(RecordsToKeep, {"Employee ID", "Worker", "Business Title", "Current Work Email", "Worker's Manager(s)", "Effective_Start_Date", "Effective_End_Date", "Data_Start_Date", "Data_End_Date"}),
+    Unchanged_Final = Unchanged_RemoveHR_Columns, //Table.SelectColumns(RecordsToKeep, {"Employee ID", "Worker", "Job Title", "Current Work Email", "Worker's Manager(s)", "Effective_Start_Date", "Effective_End_Date", "Data_Start_Date", "Data_End_Date"}),
 
     // ---  (TERM REPORT) DATA PREPARATION ---
     Term_Source = Excel.Workbook(File.Contents("C:\Users\doria\PowerQuery\HR Standard Report - Terminations.xlsx"), null, true),
@@ -268,6 +268,6 @@ Final_Change_Types = Table.TransformColumnTypes(FinalCombine,{{"Hire Date", type
 
 FinalSCDTable =  Table.ReorderColumns(
     Final_Change_Types,
-    {"Employee ID", "Data_Start_Date", "Data_End_Date", "Note", "Worker", "Business Title", "Current Work Email", "Email HR Data", "Current_Role", "Hire Date", "Effective_Start_Date", "Effective_End_Date", "Term", "Status", "LOA_Flag", "LOA_Dates", "Commission_Plan_Type", "Region", "District", "Territory", "Worker's Manager(s)", "MNGR_EID", "ORG_CODE", "Salesforce_Code", "Salesforce_Name", "Organization_Code", "Organization_Name", "Parent_Org_Code", "Parent_Org_Name", "Org_Type", "Parent_Org_Type", "Default_Type", "Commission Assignment"} )
+    {"Employee ID", "Data_Start_Date", "Data_End_Date", "Note", "Worker", "Job Title", "Current Work Email", "Email HR Data", "Current_Role", "Hire Date", "Effective_Start_Date", "Effective_End_Date", "Term", "Status", "LOA_Flag", "LOA_Dates", "Commission_Plan_Type", "Region", "District", "Territory", "Worker's Manager(s)", "MNGR_EID", "ORG_CODE", "Salesforce_Code", "Salesforce_Name", "Organization_Code", "Organization_Name", "Parent_Org_Code", "Parent_Org_Name", "Org_Type", "Parent_Org_Type", "Default_Type", "Commission Assignment"} )
 in
    FinalSCDTable
