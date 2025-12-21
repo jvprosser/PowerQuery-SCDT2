@@ -10,6 +10,20 @@ let
     //Buffer_Sorted = Table.Buffer(Master_Changed_Type),
     Sorted_Master = Table.Sort(Master_Changed_Type,{{"Employee ID", Order.Ascending}}),
 
+ // --- 2. CURRENT (HR REPORT) DATA PREPARATION ---
+    L_Source = Excel.Workbook(File.Contents("C:\Users\doria\PowerQuery\HR LOA Report.xlsx"), null, true),
+    L_Standard_Sheet = L_Source{[Item="Sheet1",Kind="Sheet"]}[Data],
+    L_Removed_Top_Rows = Table.Skip(L_Standard_Sheet,5),
+    L_Promoted_Headers = Table.PromoteHeaders(L_Removed_Top_Rows, [PromoteAllScalars=true]),
+
+
+    L_Remove_Cols = Table.RemoveColumns(L_Promoted_Headers  ,{"Hire Date", "Supervisory Organization", "Location", "Manager(s)", "HR Business Partner", "HR Partner", "Cost Centers", "Effect - Payroll", "Effect - Absence Accrual", "Effect - Stock Vesting", "Effect - Benefits", "Effect - Continuous Service Accrual"}),
+
+    L_EID_Num = Table.TransformColumnTypes(L_Remove_Cols, {{"Employee ID", type number}}),
+
+    L_RenameColumns =  Table.RenameColumns(L_EID_Num, {{"Employee ID","L Employee ID"},{"Worker","L Worker"}}),
+    L_Sorted_Rows = Table.Sort(L_RenameColumns,{{"L Employee ID", Order.Ascending}}),
+
     // --- 2. CURRENT (HR REPORT) DATA PREPARATION ---
     HR_Source = Excel.Workbook(File.Contents("C:\Users\doria\PowerQuery\HR Standard Report.xlsx"), null, true),
     HR_Standard_Sheet = HR_Source{[Item="Sheet1",Kind="Sheet"]}[Data],
@@ -21,14 +35,14 @@ let
             and [Country] = "United States of America"
     ),
     //H_Rename_EID =   Table.RenameColumns(H_Filtered_Rows, {{"Employee ID","HR Employee ID"}}),
-    H_Remove_Cols = Table.RemoveColumns(H_Filtered_Rows  ,{"Worker Type - Text", "Employee Type", "Fixed-Term End Date", "Contingent Worker Type", "Exempt / Non-Exempt", "Contract End Date", "Time Type", "Source", "First Name", "Last Name", "Position ID", "Job Code", "Job Profile", "Job Title", "Company", "Supervisory Organization", "Supervisory Organization - Hierarchy", "Functional Organizational Hierarchy", "Functional Org Level 1", "Functional Org Level 2", "Functional Org Level 3", "Functional Org Level 4", "Functional Org Level 5", "Cost Center", "Cost Center Hierarchy", "Job Family", "Work Arrangement", "Current Work Arrangement", "Location", "Scheduled Weekly Hours", "Country", "City", "State", "Continuous Service Date", "Company Service Date", "Termination Date", "Length of Service", "Time in Job Profile", "Work Shift", "Is Manager", "Management Level", "HR Partner", "User Name", "Prior Work Email", "Number of Direct Reports", "Management Chain - Level 09", "Management Chain - Level 08", "Management Chain - Level 07", "Management Chain - Level 06", "Management Chain - Level 05", "Management Chain - Level 04", "Management Chain - Level 03", "Management Chain - Level 02", "Management Chain - Level 01"}),
+    H_Remove_Cols = Table.RemoveColumns(H_Filtered_Rows  ,{"Worker Type - Text", "Employee Type", "Fixed-Term End Date", "Contingent Worker Type", "Exempt / Non-Exempt", "Contract End Date", "Time Type", "Source", "First Name", "Last Name",  "Job Code", "Job Profile", "Business Title", "Company", "Supervisory Organization", "Supervisory Organization - Hierarchy", "Functional Organizational Hierarchy", "Functional Org Level 1", "Functional Org Level 2", "Functional Org Level 3", "Functional Org Level 4", "Functional Org Level 5", "Cost Center", "Cost Center Hierarchy", "Job Family", "Work Arrangement", "Current Work Arrangement", "Location", "Scheduled Weekly Hours", "Country", "City", "State", "Continuous Service Date", "Company Service Date", "Termination Date", "Length of Service", "Time in Job Profile", "Work Shift", "Is Manager", "Management Level", "HR Partner", "User Name", "Prior Work Email", "Number of Direct Reports", "Management Chain - Level 09", "Management Chain - Level 08", "Management Chain - Level 07", "Management Chain - Level 06", "Management Chain - Level 05", "Management Chain - Level 04", "Management Chain - Level 03", "Management Chain - Level 02", "Management Chain - Level 01"}),
     
     H_EID_Num = Table.TransformColumnTypes(H_Remove_Cols,{{"Employee ID", type number}}),
     //H_Buffer_Table = Table.Buffer(H_EID_Num),
 
     H_RenameColumns =  Table.RenameColumns(H_EID_Num,
        {{"Employee ID","HR Employee ID"},{"Worker","HR Worker"},{"Hire Date","HR Hire Date"},
-        {"Job Title","HR Job Title"},
+        {"Job Title","HR Job Title"},{"Position ID", "HR Position ID"},
        {"Current Work Email","HR Current Work Email"},{ "Worker's Manager(s)","HR Worker's Manager(s)"}}), 
 
 
@@ -40,8 +54,137 @@ let
     
     // Get only the currently ACTIVE records from the Master Data
     ActiveMaster = Table.SelectRows(Sorted_Master, each [Data_End_Date] = null and [Employee ID] <> null),
+///// LOA 
+ 
+// "Last Date for Which Paid",
+// Join ActiveMaster to LOA table
+L_NewLOA =
+    Table.NestedJoin(
+        ActiveMaster,              // Left table
+        "Employee ID",
+        L_Sorted_Rows,              // Right table
+        "L Employee ID",
+        "LOA",
+        JoinKind.Inner
+    ),
 
-    // Perform a Right Anti-Join to find NEW records in the Current Snapshot (H_Sorted_Rows) 
+// Expand LOA records
+L_NewLOAExpanded =
+    Table.ExpandTableColumn(
+        L_NewLOA,
+        "LOA",
+        {
+            "L Employee ID",
+            "L Worker",
+            "Leave Type (Including Family)",
+            "Last Day of Work",
+            "First Day",
+            "Estimated Last Day",
+            "Actual Last Day",
+            "Total Days",
+            "Units Requested",
+            "Unit of Time"
+        }
+    ),
+
+// Ensure correct data types
+L_ChangedTypes =
+    Table.TransformColumnTypes(
+        L_NewLOAExpanded,
+        {
+            {"Last Day of Work", type date},
+            {"Estimated Last Day", type date},
+            {"Actual Last Day", type date},
+            {"Total Days", type text}
+        }
+    ),
+
+
+// Group by Employee ID and calculate required values
+// Group and create a single note column
+L_GroupedLOA =
+    Table.Group(
+    L_ChangedTypes,
+    {"L Employee ID"},
+    {
+         {"Earliest Last Day of Work", each List.Min([Last Day of Work]), type date},
+            {"Latest Estimated Last Day", each List.Max([Estimated Last Day]), type date},
+            {"Latest Actual Last Day", each List.Max([Actual Last Day]), type date},
+{
+            "L_LOA_Flag",
+            each
+                if List.Contains([Actual Last Day], null)
+                then "LOA Started"
+                else "LOA Ended",
+            type text
+        },
+            {
+            "L_LOA_Dates",
+            each
+                let
+                    StartDate =
+                        List.Min([Last Day of Work]),
+                    EndDate =
+                        List.Max(List.RemoveNulls([Estimated Last Day])),
+                    DaysTotal =
+                        Text.Combine(
+                            List.RemoveNulls([Total Days]),
+                            ", "
+                        )
+                in
+                    ""
+                    & Date.ToText(StartDate, "MM/dd/yyyy")
+                    & " – "
+                    & Date.ToText(EndDate, "MM/dd/yyyy")
+                    & "(est) " & DaysTotal & "",
+            type text
+        }
+    }
+),
+
+    CutoffDate = Date.AddDays(Date.From(DateTime.LocalNow()), -7),
+    TodayDate = Date.From(DateTime.LocalNow()),
+
+  L_OnLeaveNow = Table.SelectRows(L_GroupedLOA, each
+        // Record must have matched a current record
+        [L_LOA_Flag] = "LOA Started" and 
+         Date.From([Earliest Last Day of Work]) >= CutoffDate   
+         or ([L_LOA_Flag] = "LOA Ended" and  [Latest Actual Last Day] >= CutoffDate and  [Latest Actual Last Day] < TodayDate)
+    ),
+
+L_MergedBack =
+Table.NestedJoin(
+        ActiveMaster,              // Left table
+        "Employee ID",
+    L_OnLeaveNow,           // grouped summary
+    "L Employee ID",
+    "LOA",
+    JoinKind.Inner
+),
+
+L_ExpandedMergedBack =
+Table.ExpandTableColumn(
+    L_MergedBack,
+    "LOA",
+    {"L_LOA_Flag", "L_LOA_Dates"}
+),
+
+L_MergedRemove_Cols = Table.RemoveColumns(L_ExpandedMergedBack  ,{"LOA_Flag","LOA_Dates"}),
+
+L_MergedRenamedColumns_final = Table.RenameColumns(
+    L_MergedRemove_Cols,
+    {
+        {"L_LOA_Flag", "LOA_Flag"},
+        {"L_LOA_Dates", "LOA_Dates"}
+    }
+),
+
+
+
+
+
+
+// Perform a Right Anti-Join to find NEW records in the Current Snapshot (H_Sorted_Rows) 
     // that DO NOT exist in the Master (ActiveMaster).
     NewInserts = Table.NestedJoin(
         ActiveMaster, // Left table (Master)
@@ -55,16 +198,15 @@ let
     NewInsertsExpanded = Table.ExpandTableColumn(
         NewInserts,
         "NTC",
-          {"HR Employee ID","HR Worker", "HR Hire Date",  "HR Job Title", "HR Current Work Email", "HR Workers Managers"}
+          {"HR Employee ID","HR Worker", "HR Hire Date",  "HR Job Title", "HR Current Work Email", "HR Workers Managers", "HR Position ID"}
     ),
    Removed_Columns = Table.RemoveColumns(NewInsertsExpanded,
-  {"Employee ID","Worker", "Hire Date",  "Job Title", "Current Work Email", "Worker's Manager(s)",
-  "Data_Start_Date","Note"}
+  {"Employee ID","Worker", "Hire Date",  "Job Title", "Current Work Email", "Worker's Manager(s)","Position ID",  "Data_Start_Date","Note"}
 )//"Effective_End_Date",
 ,
 
     RenameNewInsertColumns =  Table.RenameColumns(Removed_Columns,
-       {{"HR Employee ID","Employee ID"}, {"HR Worker","Worker"}, {"HR Hire Date","Hire Date"}, {"HR Job Title","Job Title"},
+       {{"HR Employee ID","Employee ID"}, {"HR Worker","Worker"}, {"HR Hire Date","Hire Date"}, {"HR Job Title","Job Title"},{"HR Position ID","Position ID"},
        {"HR Current Work Email","Current Work Email"}, { "HR Workers Managers","Worker's Manager(s)"}}), 
 
 
@@ -90,11 +232,11 @@ let
     ),
     
     // Expand the current record columns and rename them to avoid conflict.
-    // The comparison columns are {"Worker", "Job Title", "Current Work Email", "Worker's Manager(s)"}
+    // The comparison columns are {"Worker", "Job Title", "Current Work Email", "Worker's Manager(s)", "Position ID"}
     ExpandedRecords = Table.ExpandTableColumn(
         JoinedRecords, 
         "CurrentRecord", 
-         {"HR Worker",  "HR Job Title", "HR Current Work Email", "HR Worker's Manager(s)"}
+         {"HR Worker",  "HR Job Title", "HR Current Work Email", "HR Worker's Manager(s)", "HR Position ID"}
     ),
 
     // Identify records that have CHANGED and need to be expired (Type 2 change)
@@ -139,7 +281,7 @@ let
 
 
 // remove the new columns from HR since these are the originals and we keep thier values
-    Expired_Remove_Columns = Table.RemoveColumns(RecordsWithDifferences, {"HR Worker",  "HR Job Title", "HR Current Work Email", "HR Worker's Manager(s)","Data_End_Date","Note_updated"}),
+    Expired_Remove_Columns = Table.RemoveColumns(RecordsWithDifferences, {"HR Worker",  "HR Job Title", "HR Current Work Email", "HR Worker's Manager(s)","Data_End_Date","Note_updated", "HR Position ID"}),
 
 // Add a data end date of yesterday to expire the record
     Expired_versions_final = Table.AddColumn(Expired_Remove_Columns, "Data_End_Date", each Date.AddDays(Date.From(DateTime.LocalNow()), -1), type date),
@@ -148,10 +290,10 @@ let
    NewVersions = RecordsWithDifferences,
  
    NewVersions_Removed_Columns = Table.RemoveColumns(NewVersions,
-     { "Data_Start_Date","Note","Worker","Job Title","Current Work Email","Worker's Manager(s)","Status","Effective_Start_Date", "Effective_End_Date"}),
+     { "Data_Start_Date","Note","Worker","Job Title","Current Work Email","Worker's Manager(s)","Status","Effective_Start_Date", "Effective_End_Date", "Position ID"}),
 
     NewVersions_Rename_Columns =  Table.RenameColumns(NewVersions_Removed_Columns,
-       {{"HR Worker","Worker"}, {"HR Job Title","Job Title"},{"Note_updated","Note"},
+       {{"HR Worker","Worker"}, {"HR Job Title","Job Title"},{"Note_updated","Note"},{"HR Position ID", "Position ID"},
        {"HR Current Work Email","Current Work Email"},{ "HR Worker's Manager(s)","Worker's Manager(s)"}}), 
 
     NewVersions_status = Table.AddColumn(NewVersions_Rename_Columns, "Status", each "Active", type text),
@@ -177,7 +319,7 @@ let
         )
     ),
 
-    Unchanged_RemoveHR_Columns = Table.RemoveColumns(UnchangedRecords, {"HR Worker",  "HR Job Title", "HR Current Work Email", "HR Worker's Manager(s)","Data_End_Date"}),
+    Unchanged_RemoveHR_Columns = Table.RemoveColumns(UnchangedRecords, {"HR Worker",  "HR Job Title", "HR Current Work Email", "HR Worker's Manager(s)","Data_End_Date", "HR Position ID"}),
 
     // Select the existing historical columns only
     Unchanged_Final = Unchanged_RemoveHR_Columns, //Table.SelectColumns(RecordsToKeep, {"Employee ID", "Worker", "Job Title", "Current Work Email", "Worker's Manager(s)", "Effective_Start_Date", "Effective_End_Date", "Data_Start_Date", "Data_End_Date"}),
@@ -243,13 +385,13 @@ let
         else "Termed"
         //else [Note] & "; Termed" // We are not appending. the original note is in the expired record.
       ),
-   Term_Remove_Columns = Table.RemoveColumns(TermExp_AppendToNote, {"Term","Data_Start_Date","Data_End_Date","Note"}),
+   Term_Remove_Columns = Table.RemoveColumns(TermExp_AppendToNote, {"Term","Data_Start_Date","Data_End_Date","Note", "Effective_Start_Date", "Effective_End_Date"}),
 
      Term_UpdateDataEndDate = Table.AddColumn(Term_Remove_Columns, "Data_End_Date", each  DateTime.Date(DateTime.LocalNow()),  type date),
      Term_UpdateDataStartDate = Table.AddColumn(Term_UpdateDataEndDate, "Data_Start_Date", each DateTime.Date(DateTime.LocalNow()), type date),
- 
-     Term_final =  Table.RenameColumns(Term_UpdateDataStartDate,
-       {{"Termination Date","Term"},{"Term_Note_update","Note"}}),
+     Term_dup_ESD = Table.DuplicateColumn(Term_UpdateDataStartDate,"Termination Date", "Effective_Start_Date"),
+     Term_dup_EED = Table.DuplicateColumn(Term_dup_ESD,"Termination Date", "Effective_End_Date"), 
+     Term_final =  Table.RenameColumns(Term_dup_EED, {{"Termination Date","Term"},{"Term_Note_update","Note"}}),
 
 
     // 4. Combine all the new/modified data streams
@@ -260,7 +402,8 @@ let
        NewVersions_final,         // New employees being inserted
         NewInserts_Final,      // New active records for changed employees
         TermExp_Final,
-       Term_final 
+       Term_final,
+       L_MergedRenamedColumns_final 
     }),
 
 //Final_Change_Types = Table.TransformColumnTypes(FinalCombine,{{"Hire Date", type date},{"Effective_Start_Date", type date},{"Effective_End_Date", type date}}),
