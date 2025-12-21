@@ -1,7 +1,16 @@
 let
     // --- 1. HISTORICAL (MASTER) DATA PREPARATION ---
     // Get historical (Master) File
-    Master_Source = Excel.Workbook(File.Contents("C:\Users\doria\PowerQuery\master_file_template_DT_TEXT.xlsx"), null, true),
+
+
+    BasePath = "C:\Users\doria\PowerQuery\",
+    WeekPath = BasePath & pWeek & "\",
+    
+    HR_Source = Excel.Workbook(File.Contents(WeekPath & "HR Standard Report.xlsx"), null, true),
+    Term_Source = Excel.Workbook(File.Contents(WeekPath & "HR Standard Report - Terminations.xlsx"), null, true),    
+    L_Source = Excel.Workbook(File.Contents(WeekPath & "HR LOA Report.xlsx"), null, true),
+    Master_Source = Excel.Workbook(File.Contents(BasePath & "master_file_template_DT_TEXT.xlsx"), null, true),
+    
     Sample_Master_Sheet = Master_Source{[Item="Employee_Master",Kind="Sheet"]}[Data],
     HistoricalSCD = Table.PromoteHeaders(Sample_Master_Sheet, [PromoteAllScalars=true]),
     // Note: Effective_Start_Date and Effective_End_Date columns are retained but not used for the SCD Type 2 logic below.
@@ -11,7 +20,7 @@ let
     Sorted_Master = Table.Sort(Master_Changed_Type,{{"Employee ID", Order.Ascending}}),
 
  // --- 2. CURRENT (HR REPORT) DATA PREPARATION ---
-    L_Source = Excel.Workbook(File.Contents("C:\Users\doria\PowerQuery\HR LOA Report.xlsx"), null, true),
+
     L_Standard_Sheet = L_Source{[Item="Sheet1",Kind="Sheet"]}[Data],
     L_Removed_Top_Rows = Table.Skip(L_Standard_Sheet,5),
     L_Promoted_Headers = Table.PromoteHeaders(L_Removed_Top_Rows, [PromoteAllScalars=true]),
@@ -25,7 +34,7 @@ let
     L_Sorted_Rows = Table.Sort(L_RenameColumns,{{"L Employee ID", Order.Ascending}}),
 
     // --- 2. CURRENT (HR REPORT) DATA PREPARATION ---
-    HR_Source = Excel.Workbook(File.Contents("C:\Users\doria\PowerQuery\HR Standard Report.xlsx"), null, true),
+
     HR_Standard_Sheet = HR_Source{[Item="Sheet1",Kind="Sheet"]}[Data],
     H_Removed_Top_Rows = Table.Skip(HR_Standard_Sheet,2),
     H_Promoted_Headers1 = Table.PromoteHeaders(H_Removed_Top_Rows, [PromoteAllScalars=true]),
@@ -142,8 +151,8 @@ L_GroupedLOA =
     }
 ),
 
-    CutoffDate = Date.AddDays(Date.From(DateTime.LocalNow()), -7),
-    TodayDate = Date.From(DateTime.LocalNow()),
+    CutoffDate = Date.AddDays(Date.From(pWeek), -7),
+    TodayDate = Date.From(pWeek),
 
   L_OnLeaveNow = Table.SelectRows(L_GroupedLOA, each
         // Record must have matched a current record
@@ -163,7 +172,7 @@ Table.Join(
 ),
 
 L_MergedBackExpireRemove_Cols = Table.RemoveColumns(L_MergedBackExpanded  ,{"Data_End_Date","L_LOA_Flag","L_LOA_Dates"}),
-L_MergedBackExpire_Final = Table.AddColumn(L_MergedBackExpireRemove_Cols, "Data_End_Date", each Date.AddDays(Date.From(DateTime.LocalNow()), -1), type date),
+L_MergedBackExpire_Final = Table.AddColumn(L_MergedBackExpireRemove_Cols, "Data_End_Date", each Date.AddDays(Date.From(pWeek), -1), type date),
  
 
 L_MergedBack =
@@ -184,7 +193,7 @@ Table.ExpandTableColumn(
 ),
 
 L_MergedRemove_Cols = Table.RemoveColumns(L_MergedBackExpanded  ,{"LOA_Flag","LOA_Dates","Data_Start_Date","Note"}),
-L_MergeUpdateDataStartDate = Table.AddColumn(L_MergedRemove_Cols, "Data_Start_Date", each DateTime.Date(DateTime.LocalNow()), type date),
+L_MergeUpdateDataStartDate = Table.AddColumn(L_MergedRemove_Cols, "Data_Start_Date", each DateTime.Date(pWeek), type date),
 L_MergeUpdateNote = Table.DuplicateColumn(L_MergeUpdateDataStartDate,"L_LOA_Flag", "Note"), 
 
 L_MergedRenamedColumns_final = Table.RenameColumns(
@@ -228,7 +237,7 @@ L_MergedRenamedColumns_final = Table.RenameColumns(
        {"HR Current Work Email","Current Work Email"}, { "HR Workers Managers","Worker's Manager(s)"}}), 
 
 
-    UpdateDataStartDate = Table.AddColumn(RenameNewInsertColumns, "Data_Start_Date", each DateTime.Date(DateTime.LocalNow()), type date),
+    UpdateDataStartDate = Table.AddColumn(RenameNewInsertColumns, "Data_Start_Date", each DateTime.Date(pWeek), type date),
     
      NewInserts_Final = Table.AddColumn(UpdateDataStartDate, "Note", each "Hired", type text ),
 
@@ -302,7 +311,7 @@ L_MergedRenamedColumns_final = Table.RenameColumns(
     Expired_Remove_Columns = Table.RemoveColumns(RecordsWithDifferences, {"HR Worker",  "HR Job Title", "HR Current Work Email", "HR Worker's Manager(s)","Data_End_Date","Note_updated", "HR Position ID"}),
 
 // Add a data end date of yesterday to expire the record
-    Expired_versions_final = Table.AddColumn(Expired_Remove_Columns, "Data_End_Date", each Date.AddDays(Date.From(DateTime.LocalNow()), -1), type date),
+    Expired_versions_final = Table.AddColumn(Expired_Remove_Columns, "Data_End_Date", each Date.AddDays(Date.From(pWeek), -1), type date),
 
   // now make a copy of the same records but we remove the original values and put the new ones from HR in
    NewVersions = RecordsWithDifferences,
@@ -315,7 +324,7 @@ L_MergedRenamedColumns_final = Table.RenameColumns(
        {"HR Current Work Email","Current Work Email"},{ "HR Worker's Manager(s)","Worker's Manager(s)"}}), 
 
     NewVersions_status = Table.AddColumn(NewVersions_Rename_Columns, "Status", each "Active", type text),
-    NewVersions_final = Table.AddColumn(NewVersions_status, "Data_Start_Date", each DateTime.Date(DateTime.LocalNow()), type date),
+    NewVersions_final = Table.AddColumn(NewVersions_status, "Data_Start_Date", each DateTime.Date(pWeek), type date),
 
     // 2. Prepare New Active Records for the Changed Employees
     // Filter the Current Snapshot to get the rows corresponding to the changed employees
@@ -343,7 +352,7 @@ L_MergedRenamedColumns_final = Table.RenameColumns(
     Unchanged_Final = Unchanged_RemoveHR_Columns, //Table.SelectColumns(RecordsToKeep, {"Employee ID", "Worker", "Job Title", "Current Work Email", "Worker's Manager(s)", "Effective_Start_Date", "Effective_End_Date", "Data_Start_Date", "Data_End_Date"}),
 
     // ---  (TERM REPORT) DATA PREPARATION ---
-    Term_Source = Excel.Workbook(File.Contents("C:\Users\doria\PowerQuery\HR Standard Report - Terminations.xlsx"), null, true),
+
     Term_Standard_Sheet = Term_Source{[Item="Sheet1",Kind="Sheet"]}[Data],
     Term_Removed_Top_Rows = Table.Skip(Term_Standard_Sheet,2),
     Term_Promoted_Headers = Table.PromoteHeaders(Term_Removed_Top_Rows, [PromoteAllScalars=true]),
@@ -372,11 +381,11 @@ L_MergedRenamedColumns_final = Table.RenameColumns(
 
    TermExp_Remove_Columns = Table.RemoveColumns(TermExp_Result, {"Term","Data_End_Date"}),
 
-     TermExp_UpdateDataEndDate = Table.AddColumn(TermExp_Remove_Columns, "Data_End_Date", each Date.AddDays(Date.From(DateTime.LocalNow()), -1), type date),
+     TermExp_UpdateDataEndDate = Table.AddColumn(TermExp_Remove_Columns, "Data_End_Date", each Date.AddDays(Date.From(pWeek), -1), type date),
 
    TermExp_Final = TermExp_UpdateDataEndDate,
 
-//  Yesterday = Date.AddDays(Date.From(DateTime.LocalNow()), -1)
+//  Yesterday = Date.AddDays(Date.From(pWeek), -1)
 
    // Perform a INNER Join and Expand to align historical and current records for comparison.
     Term_JoinedRecords = Table.NestedJoin(
@@ -405,8 +414,8 @@ L_MergedRenamedColumns_final = Table.RenameColumns(
       ),
    Term_Remove_Columns = Table.RemoveColumns(TermExp_AppendToNote, {"Term","Data_Start_Date","Data_End_Date","Note", "Effective_Start_Date", "Effective_End_Date"}),
 
-     Term_UpdateDataEndDate = Table.AddColumn(Term_Remove_Columns, "Data_End_Date", each  DateTime.Date(DateTime.LocalNow()),  type date),
-     Term_UpdateDataStartDate = Table.AddColumn(Term_UpdateDataEndDate, "Data_Start_Date", each DateTime.Date(DateTime.LocalNow()), type date),
+     Term_UpdateDataEndDate = Table.AddColumn(Term_Remove_Columns, "Data_End_Date", each  DateTime.Date(pWeek),  type date),
+     Term_UpdateDataStartDate = Table.AddColumn(Term_UpdateDataEndDate, "Data_Start_Date", each DateTime.Date(pWeek), type date),
      Term_dup_ESD = Table.DuplicateColumn(Term_UpdateDataStartDate,"Termination Date", "Effective_Start_Date"),
      Term_dup_EED = Table.DuplicateColumn(Term_dup_ESD,"Termination Date", "Effective_End_Date"), 
      Term_final =  Table.RenameColumns(Term_dup_EED, {{"Termination Date","Term"},{"Term_Note_update","Note"}}),
