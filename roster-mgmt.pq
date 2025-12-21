@@ -134,7 +134,7 @@ L_GroupedLOA =
                 in
                     ""
                     & Date.ToText(StartDate, "MM/dd/yyyy")
-                    & " – "
+                    & " - "
                     & Date.ToText(EndDate, "MM/dd/yyyy")
                     & "(est) " & DaysTotal & "",
             type text
@@ -152,6 +152,20 @@ L_GroupedLOA =
          or ([L_LOA_Flag] = "LOA Ended" and  [Latest Actual Last Day] >= CutoffDate and  [Latest Actual Last Day] < TodayDate)
     ),
 
+
+L_MergedBackExpire =
+Table.Join(
+        ActiveMaster,              // Left table
+        "Employee ID",
+    L_OnLeaveNow,           // grouped summary
+    "L Employee ID",
+    JoinKind.Inner
+),
+
+L_MergedBackExpireRemove_Cols = Table.RemoveColumns(L_MergedBackExpanded  ,{"Data_End_Date","L_LOA_Flag","L_LOA_Dates"}),
+L_MergedBackExpire_Final = Table.AddColumn(L_MergedBackExpireRemove_Cols, "Data_End_Date", each Date.AddDays(Date.From(DateTime.LocalNow()), -1), type date),
+ 
+
 L_MergedBack =
 Table.NestedJoin(
         ActiveMaster,              // Left table
@@ -162,17 +176,19 @@ Table.NestedJoin(
     JoinKind.Inner
 ),
 
-L_ExpandedMergedBack =
+L_MergedBackExpanded =
 Table.ExpandTableColumn(
     L_MergedBack,
     "LOA",
     {"L_LOA_Flag", "L_LOA_Dates"}
 ),
 
-L_MergedRemove_Cols = Table.RemoveColumns(L_ExpandedMergedBack  ,{"LOA_Flag","LOA_Dates"}),
+L_MergedRemove_Cols = Table.RemoveColumns(L_MergedBackExpanded  ,{"LOA_Flag","LOA_Dates","Data_Start_Date","Note"}),
+L_MergeUpdateDataStartDate = Table.AddColumn(L_MergedRemove_Cols, "Data_Start_Date", each DateTime.Date(DateTime.LocalNow()), type date),
+L_MergeUpdateNote = Table.DuplicateColumn(L_MergeUpdateDataStartDate,"L_LOA_Flag", "Note"), 
 
 L_MergedRenamedColumns_final = Table.RenameColumns(
-    L_MergedRemove_Cols,
+    L_MergeUpdateNote,
     {
         {"L_LOA_Flag", "LOA_Flag"},
         {"L_LOA_Dates", "LOA_Dates"}
@@ -180,6 +196,8 @@ L_MergedRenamedColumns_final = Table.RenameColumns(
 ),
 
 
+
+ 
 
 
 
@@ -395,15 +413,16 @@ L_MergedRenamedColumns_final = Table.RenameColumns(
 
 
     // 4. Combine all the new/modified data streams
-    FinalCombine = Table.Combine({ 
-        InactiveMaster_final,
-        Unchanged_Final,          // Old records with a new end date
-        Expired_versions_final,             // Unchanged active records
+    FinalCombine = Table.Combine({
+       L_MergedRenamedColumns_final ,
+       L_MergedBackExpire_Final,
+       InactiveMaster_final,
+       Unchanged_Final,          // Old records with a new end date
+       Expired_versions_final,             // Unchanged active records
        NewVersions_final,         // New employees being inserted
-        NewInserts_Final,      // New active records for changed employees
-        TermExp_Final,
-       Term_final,
-       L_MergedRenamedColumns_final 
+       NewInserts_Final,      // New active records for changed employees
+       TermExp_Final,
+       Term_final
     }),
 
 //Final_Change_Types = Table.TransformColumnTypes(FinalCombine,{{"Hire Date", type date},{"Effective_Start_Date", type date},{"Effective_End_Date", type date}}),
