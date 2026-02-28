@@ -57,7 +57,7 @@ let
 
     L_EID_Num = Table.TransformColumnTypes(L_Remove_Cols, {{"Employee ID", type number}}),
 
-    L_RenameColumns =  Table.RenameColumns(L_EID_Num, {{"Employee ID","L Employee ID"},{"Worker","L Worker"}}),
+    L_RenameColumns =  Table.RenameColumns(L_EID_Num, {{"Employee ID","L Employee ID"},{"First Name","L First Name"},{"Last Name","L Last Name"}}),
     L_Sorted_Rows = Table.Sort(L_RenameColumns,{{"L Employee ID", Order.Ascending}}),
 
     // --- 2. CURRENT (HR REPORT) DATA PREPARATION ---
@@ -71,13 +71,13 @@ let
             and [Country] = "United States of America"
     ),
     //H_Rename_EID =   Table.RenameColumns(H_Filtered_Rows, {{"Employee ID","HR Employee ID"}}),
-    H_Remove_Cols = Table.RemoveColumns(H_Filtered_Rows  ,{"Worker Type - Text", "Employee Type", "Fixed-Term End Date", "Contingent Worker Type", "Exempt / Non-Exempt", "Contract End Date", "Time Type", "Source", "First Name", "Last Name",  "Job Code", "Job Profile", "Business Title", "Company", "Supervisory Organization", "Supervisory Organization - Hierarchy", "Functional Organizational Hierarchy", "Functional Org Level 1", "Functional Org Level 2", "Functional Org Level 3", "Functional Org Level 4", "Functional Org Level 5", "Cost Center", "Cost Center Hierarchy", "Job Family", "Work Arrangement", "Current Work Arrangement", "Location", "Scheduled Weekly Hours", "Country", "City", "State", "Continuous Service Date", "Company Service Date", "Termination Date", "Length of Service", "Time in Job Profile", "Work Shift", "Is Manager", "Management Level", "HR Partner", "User Name", "Prior Work Email", "Number of Direct Reports", "Management Chain - Level 09", "Management Chain - Level 08", "Management Chain - Level 07", "Management Chain - Level 06", "Management Chain - Level 05", "Management Chain - Level 04", "Management Chain - Level 03", "Management Chain - Level 02", "Management Chain - Level 01"}),
+    H_Remove_Cols = Table.RemoveColumns(H_Filtered_Rows  ,{"Worker Type - Text", "Employee Type", "Fixed-Term End Date", "Contingent Worker Type", "Exempt / Non-Exempt", "Contract End Date", "Time Type", "Source","First Name","Last Name", "Job Code", "Job Profile", "Business Title", "Company", "Supervisory Organization", "Supervisory Organization - Hierarchy", "Functional Organizational Hierarchy", "Functional Org Level 1", "Functional Org Level 2", "Functional Org Level 3", "Functional Org Level 4", "Functional Org Level 5", "Cost Center", "Cost Center Hierarchy", "Job Family", "Work Arrangement", "Current Work Arrangement", "Location", "Scheduled Weekly Hours", "Country", "City", "State", "Continuous Service Date", "Company Service Date", "Termination Date", "Length of Service", "Time in Job Profile", "Work Shift", "Is Manager", "Management Level", "HR Partner", "User Name", "Prior Work Email", "Number of Direct Reports", "Management Chain - Level 09", "Management Chain - Level 08", "Management Chain - Level 07", "Management Chain - Level 06", "Management Chain - Level 05", "Management Chain - Level 04", "Management Chain - Level 03", "Management Chain - Level 02", "Management Chain - Level 01"}),
     
     H_EID_Num = Table.TransformColumnTypes(H_Remove_Cols,{{"Employee ID", type number}}),
     //H_Buffer_Table = Table.Buffer(H_EID_Num),
 
     H_RenameColumns =  Table.RenameColumns(H_EID_Num,
-       {{"Employee ID","HR Employee ID"},{"Worker","HR Worker"},{"Hire Date","HR Hire Date"},
+       {{"Employee ID","HR Employee ID"},{ "First Name", "HR First Name"},{ "Last Name", "HR Last Name" },{"Hire Date","HR Hire Date"},
         {"Job Title","HR Job Title"},{"Position ID", "HR Position ID"},
        {"Current Work Email","HR Current Work Email"},{ "Worker's Manager(s)","HR Worker's Manager(s)"}}), 
 
@@ -252,15 +252,15 @@ L_MergedRenamedColumns_final = Table.RenameColumns(
     NewInsertsExpanded = Table.ExpandTableColumn(
         NewInserts,
         "NTC",
-          {"HR Employee ID","HR Worker", "HR Hire Date",  "HR Job Title", "HR Current Work Email", "HR Workers Managers", "HR Position ID"}
+          {"HR Employee ID","HR First Name","HR Last Name", "HR Hire Date",  "HR Job Title", "HR Current Work Email", "HR Workers Managers", "HR Position ID"}
     ),
    Removed_Columns = Table.RemoveColumns(NewInsertsExpanded,
-  {"Employee ID","Worker", "Hire Date",  "Job Title", "Current Work Email", "Worker's Manager(s)","Position ID",  "Data_Start_Date","Note"}
+  {"Employee ID","First Name","Last Name", "Hire Date",  "Job Title", "Current Work Email", "Worker's Manager(s)","Position ID",  "Data_Start_Date","Note"}
 )//"Effective_End_Date",
 ,
 
     RenameNewInsertColumns =  Table.RenameColumns(Removed_Columns,
-       {{"HR Employee ID","Employee ID"}, {"HR Worker","Worker"}, {"HR Hire Date","Hire Date"}, {"HR Job Title","Job Title"},{"HR Position ID","Position ID"},
+       {{"HR Employee ID","Employee ID"}, {"HR First Name","First Name"}, {"HR Last Name","Last Name"}, {"HR Hire Date","Hire Date"}, {"HR Job Title","Job Title"},{"HR Position ID","Position ID"},
        {"HR Current Work Email","Current Work Email"}, { "HR Workers Managers","Worker's Manager(s)"}}), 
 
 
@@ -286,11 +286,11 @@ L_MergedRenamedColumns_final = Table.RenameColumns(
     ),
     
     // Expand the current record columns and rename them to avoid conflict.
-    // The comparison columns are {"Worker", "Job Title", "Current Work Email", "Worker's Manager(s)", "Position ID"}
+    // The comparison columns are {"First Name","Last Name", "Job Title", "Current Work Email", "Worker's Manager(s)", "Position ID"}
     ExpandedRecords = Table.ExpandTableColumn(
         JoinedRecords, 
         "CurrentRecord", 
-         {"HR Worker",  "HR Job Title", "HR Current Work Email", "HR Worker's Manager(s)", "HR Position ID"}
+         {"HR First Name","HR Last Name",  "HR Job Title", "HR Current Work Email", "HR Worker's Manager(s)", "HR Position ID"}
     ),
 
     // Identify records that have CHANGED and need to be expired (Type 2 change)
@@ -331,7 +331,7 @@ L_MergedRenamedColumns_final = Table.RenameColumns(
 
 
 // remove the new columns from HR since these are the originals and we keep thier values
-    Expired_Remove_Columns = Table.RemoveColumns(RecordsWithDifferences, {"HR Worker",  "HR Job Title", "HR Current Work Email", "HR Worker's Manager(s)","Data_End_Date","Note_updated", "HR Position ID"}),
+    Expired_Remove_Columns = Table.RemoveColumns(RecordsWithDifferences, {"HR First Name","HR Last Name",  "HR Job Title", "HR Current Work Email", "HR Worker's Manager(s)","Data_End_Date","Note_updated", "HR Position ID"}),
 
 // Add a data end date of yesterday to expire the record
     Expired_versions_final = Table.AddColumn(Expired_Remove_Columns, "Data_End_Date", each Date.AddDays(Date.From(#"pWeek (4)"), -1), type date),
@@ -340,10 +340,10 @@ L_MergedRenamedColumns_final = Table.RenameColumns(
    NewVersions = RecordsWithDifferences,
  
    NewVersions_Removed_Columns = Table.RemoveColumns(NewVersions,
-     { "Data_Start_Date","Note","Worker","Job Title","Current Work Email","Worker's Manager(s)","Status","Effective_Start_Date", "Effective_End_Date", "Position ID"}),
+     { "Data_Start_Date","Note","First Name","Last Name","Job Title","Current Work Email","Worker's Manager(s)","Status","Effective_Start_Date", "Effective_End_Date", "Position ID"}),
 
     NewVersions_Rename_Columns =  Table.RenameColumns(NewVersions_Removed_Columns,
-       {{"HR Worker","Worker"}, {"HR Job Title","Job Title"},{"Note_updated","Note"},{"HR Position ID", "Position ID"},
+       {{"HR First Name","First Name","HR Last Name","Last Name"}, {"HR Job Title","Job Title"},{"Note_updated","Note"},{"HR Position ID", "Position ID"},
        {"HR Current Work Email","Current Work Email"},{ "HR Worker's Manager(s)","Worker's Manager(s)"}}), 
 
     NewVersions_status = Table.AddColumn(NewVersions_Rename_Columns, "Status", each "Active", type text),
@@ -369,10 +369,10 @@ L_MergedRenamedColumns_final = Table.RenameColumns(
         )
     ),
 
-    Unchanged_RemoveHR_Columns = Table.RemoveColumns(UnchangedRecords, {"HR Worker",  "HR Job Title", "HR Current Work Email", "HR Worker's Manager(s)","Data_End_Date", "HR Position ID"}),
+    Unchanged_RemoveHR_Columns = Table.RemoveColumns(UnchangedRecords, {"HR First Name", "HR Last Name",  "HR Job Title", "HR Current Work Email", "HR Worker's Manager(s)","Data_End_Date", "HR Position ID"}),
 
     // Select the existing historical columns only
-    Unchanged_Final = Unchanged_RemoveHR_Columns, //Table.SelectColumns(RecordsToKeep, {"Employee ID", "Worker", "Job Title", "Current Work Email", "Worker's Manager(s)", "Effective_Start_Date", "Effective_End_Date", "Data_Start_Date", "Data_End_Date"}),
+    Unchanged_Final = Unchanged_RemoveHR_Columns, //Table.SelectColumns(RecordsToKeep, {"Employee ID", "First Name","Last Name", "Job Title", "Current Work Email", "Worker's Manager(s)", "Effective_Start_Date", "Effective_End_Date", "Data_Start_Date", "Data_End_Date"}),
 
     // ---  (TERM REPORT) DATA PREPARATION ---
 
@@ -462,7 +462,7 @@ L_MergedRenamedColumns_final = Table.RenameColumns(
 
     FinalSCDTable =  Table.ReorderColumns(
     Final_Change_Types,
-    {"Employee ID", "Data_Start_Date", "Data_End_Date", "Note", "Worker", "Job Title", "Current Work Email", "Email HR Data", "Current_Role",
+    {"Employee ID", "Data_Start_Date", "Data_End_Date", "Note", "First Name","Last Name", "Job Title", "Current Work Email", "Email HR Data", "Current_Role",
      "Hire Date", "Position ID", "Effective_Start_Date", "Effective_End_Date", "Term", "Status", "LOA_Flag", "LOA_Dates", "Commission_Plan_Type", "Region", "District",
       "Territory", "Worker's Manager(s)", "MNGR_EID", "ORG_CODE", "Salesforce_Code", "Salesforce_Name", "Organization_Code", "Organization_Name", "Parent_Org_Code",
        "Parent_Org_Name", "Org_Type", "Parent_Org_Type", "Default_Type", "Commission Assignment"} )
