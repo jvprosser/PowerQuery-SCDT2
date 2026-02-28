@@ -1,18 +1,45 @@
 let
     // --- 1. HISTORICAL (MASTER) DATA PREPARATION ---
-    // Get historical (Master) File
-
-
-    BasePath = "C:\Users\doria\PowerQuery\",
-    WeekPath = BasePath & pWeek & "\",
     
-    HR_Source = Excel.Workbook(File.Contents(WeekPath & "HR Standard Report.xlsx"), null, true),
-    Term_Source = Excel.Workbook(File.Contents(WeekPath & "HR Standard Report - Terminations.xlsx"), null, true),    
-    L_Source = Excel.Workbook(File.Contents(WeekPath & "HR LOA Report.xlsx"), null, true),
-    Master_Source = Excel.Workbook(File.Contents(BasePath & "master_file_template_DT_TEXT.xlsx"), null, true),
+    // MasterPath, BasePath and pWeek are parameters.
+    // Ensure pWeek is a date type
+    DatePrefix = Date.ToText(Date.From(#"pWeek (4)"), "yy_MM_dd"),
+
+    // Connect to the folder once
+    Folder_Source = Folder.Files(#"BasePath (4)"),
+
+    // --- TERMINATIONS ---
+    Term_FilteredFiles = Table.SelectRows(Folder_Source, each 
+        Text.StartsWith([Name], DatePrefix) and 
+        Text.Contains([Name], "Terminations", Comparer.OrdinalIgnoreCase)
+    ),
+    Term_TargetFile = Term_FilteredFiles{0}[Content],
+    Term_Source = Excel.Workbook(Term_TargetFile, null, true),
+
+    // --- STANDARD REPORT ---
+    HR_FilteredFiles = Table.SelectRows(Folder_Source, each 
+        Text.StartsWith([Name], DatePrefix) and 
+        Text.Contains([Name], "Standard Report 2", Comparer.OrdinalIgnoreCase)
+    ),
+    HR_TargetFile = HR_FilteredFiles{0}[Content],
+    HR_Source = Excel.Workbook(HR_TargetFile, null, true),
+
+    // --- LOA ---
+    L_FilteredFiles = Table.SelectRows(Folder_Source, each 
+        Text.StartsWith([Name], DatePrefix) and 
+        Text.Contains([Name], "Leave", Comparer.OrdinalIgnoreCase)
+    ),
+    L_TargetFile = L_FilteredFiles{0}[Content],
+    L_Source= Excel.Workbook(L_TargetFile, null, true),
+
+    // --- MASTER ---
+ 
+    Master_Source = Excel.Workbook(File.Contents(#"MasterPath (4)"), null, true),
+    //   Master_Source = Excel.Workbook(File.Contents(BasePath & "master_file_template_DT_TEXT.xlsx"), null, true),
+
     
-    Sample_Master_Sheet = Master_Source{[Item="Employee_Master",Kind="Sheet"]}[Data],
-    HistoricalSCD = Table.PromoteHeaders(Sample_Master_Sheet, [PromoteAllScalars=true]),
+    Master_Sheet = Master_Source{[Item="Employee_Master",Kind="Sheet"]}[Data],
+    HistoricalSCD = Table.PromoteHeaders(Master_Sheet, [PromoteAllScalars=true]),
     // Note: Effective_Start_Date and Effective_End_Date columns are retained but not used for the SCD Type 2 logic below.
     Master_Changed_Type = Table.TransformColumnTypes(HistoricalSCD,{{"Employee ID", type number},{"Data_End_Date", type date}, 
     {"Data_Start_Date", type date},{"Hire Date", type date}}),
@@ -151,8 +178,8 @@ L_GroupedLOA =
     }
 ),
 
-    CutoffDate = Date.AddDays(Date.From(pWeek), -7),
-    TodayDate = Date.From(pWeek),
+    CutoffDate = Date.AddDays(Date.From(#"pWeek (4)"), -7),
+    TodayDate = Date.From(#"pWeek (4)"),
 
   L_OnLeaveNow = Table.SelectRows(L_GroupedLOA, each
         // Record must have matched a current record
@@ -172,7 +199,7 @@ Table.Join(
 ),
 
 L_MergedBackExpireRemove_Cols = Table.RemoveColumns(L_MergedBackExpanded  ,{"Data_End_Date","L_LOA_Flag","L_LOA_Dates"}),
-L_MergedBackExpire_Final = Table.AddColumn(L_MergedBackExpireRemove_Cols, "Data_End_Date", each Date.AddDays(Date.From(pWeek), -1), type date),
+L_MergedBackExpire_Final = Table.AddColumn(L_MergedBackExpireRemove_Cols, "Data_End_Date", each Date.AddDays(Date.From(#"pWeek (4)"), -1), type date),
  
 
 L_MergedBack =
@@ -193,7 +220,7 @@ Table.ExpandTableColumn(
 ),
 
 L_MergedRemove_Cols = Table.RemoveColumns(L_MergedBackExpanded  ,{"LOA_Flag","LOA_Dates","Data_Start_Date","Note"}),
-L_MergeUpdateDataStartDate = Table.AddColumn(L_MergedRemove_Cols, "Data_Start_Date", each DateTime.Date(pWeek), type date),
+L_MergeUpdateDataStartDate = Table.AddColumn(L_MergedRemove_Cols, "Data_Start_Date", each DateTime.Date(#"pWeek (4)"), type date),
 L_MergeUpdateNote = Table.DuplicateColumn(L_MergeUpdateDataStartDate,"L_LOA_Flag", "Note"), 
 
 L_MergedRenamedColumns_final = Table.RenameColumns(
@@ -237,7 +264,7 @@ L_MergedRenamedColumns_final = Table.RenameColumns(
        {"HR Current Work Email","Current Work Email"}, { "HR Workers Managers","Worker's Manager(s)"}}), 
 
 
-    UpdateDataStartDate = Table.AddColumn(RenameNewInsertColumns, "Data_Start_Date", each DateTime.Date(pWeek), type date),
+    UpdateDataStartDate = Table.AddColumn(RenameNewInsertColumns, "Data_Start_Date", each DateTime.Date(#"pWeek (4)"), type date),
     
      NewInserts_Final = Table.AddColumn(UpdateDataStartDate, "Note", each "Hired", type text ),
 
@@ -283,35 +310,31 @@ L_MergedRenamedColumns_final = Table.RenameColumns(
 
     RecordsWithDifferences =
        Table.AddColumn(
-	   RecordsToExpire,
-	   "Note_updated",
-	   each
-	       let
-		   newNote =
-		       Text.Combine(
-			   List.RemoveNulls({
-			       if not Value.NullableEquals([Worker], [HR Worker]) then "Worker Name Change" else null,
-			       if not Value.NullableEquals([Job Title], [HR Job Title]) then "Job Title Change" else null,
-			       if not Value.NullableEquals([Current Work Email], [HR Current Work Email]) then "Current Work Email Change" else null,
-			       if not Value.NullableEquals([#"Worker's Manager(s)"], [#"HR Worker's Manager(s)"]) then "Worker's Manager(s) Change" else null
-			   }),
-			   ", "
-		       )
-	       in
-           newNote,
-//	       if Text.Length(newNote) > 0 then
-//		 if [Note] = null then  newNote
-//		 else if Text.Length([Note]) = 0 then newNote
-//		 else [Note] & "; "& newNote
-//	       else [Note],
-      type text ),
+    RecordsToExpire,
+    "Note_updated",
+    each
+        let
+            // Create a list of strings based on inequality checks
+            ChangeList = {
+                if [Worker] <> [HR Worker] then "Worker Name Change" else null,
+                if [Job Title] <> [HR Job Title] then "Job Title Change" else null,
+                if [Current Work Email] <> [HR Current Work Email] then "Current Work Email Change" else null,
+                if [#"Worker's Manager(s)"] <> [#"HR Worker's Manager(s)"] then "Worker's Manager(s) Change" else null
+            },
+            
+            // Remove the nulls and join with a comma
+            newNote = Text.Combine(List.RemoveNulls(ChangeList), ", ")
+        in
+            newNote,
+    type text
+),
 
 
 // remove the new columns from HR since these are the originals and we keep thier values
     Expired_Remove_Columns = Table.RemoveColumns(RecordsWithDifferences, {"HR Worker",  "HR Job Title", "HR Current Work Email", "HR Worker's Manager(s)","Data_End_Date","Note_updated", "HR Position ID"}),
 
 // Add a data end date of yesterday to expire the record
-    Expired_versions_final = Table.AddColumn(Expired_Remove_Columns, "Data_End_Date", each Date.AddDays(Date.From(pWeek), -1), type date),
+    Expired_versions_final = Table.AddColumn(Expired_Remove_Columns, "Data_End_Date", each Date.AddDays(Date.From(#"pWeek (4)"), -1), type date),
 
   // now make a copy of the same records but we remove the original values and put the new ones from HR in
    NewVersions = RecordsWithDifferences,
@@ -324,7 +347,7 @@ L_MergedRenamedColumns_final = Table.RenameColumns(
        {"HR Current Work Email","Current Work Email"},{ "HR Worker's Manager(s)","Worker's Manager(s)"}}), 
 
     NewVersions_status = Table.AddColumn(NewVersions_Rename_Columns, "Status", each "Active", type text),
-    NewVersions_final = Table.AddColumn(NewVersions_status, "Data_Start_Date", each DateTime.Date(pWeek), type date),
+    NewVersions_final = Table.AddColumn(NewVersions_status, "Data_Start_Date", each DateTime.Date(#"pWeek (4)"), type date),
 
     // 2. Prepare New Active Records for the Changed Employees
     // Filter the Current Snapshot to get the rows corresponding to the changed employees
@@ -381,7 +404,7 @@ L_MergedRenamedColumns_final = Table.RenameColumns(
 
    TermExp_Remove_Columns = Table.RemoveColumns(TermExp_Result, {"Term","Data_End_Date"}),
 
-     TermExp_UpdateDataEndDate = Table.AddColumn(TermExp_Remove_Columns, "Data_End_Date", each Date.AddDays(Date.From(pWeek), -1), type date),
+     TermExp_UpdateDataEndDate = Table.AddColumn(TermExp_Remove_Columns, "Data_End_Date", each Date.AddDays(Date.From(#"pWeek (4)"), -1), type date),
 
    TermExp_Final = TermExp_UpdateDataEndDate,
 
@@ -414,8 +437,8 @@ L_MergedRenamedColumns_final = Table.RenameColumns(
       ),
    Term_Remove_Columns = Table.RemoveColumns(TermExp_AppendToNote, {"Term","Data_Start_Date","Data_End_Date","Note", "Effective_Start_Date", "Effective_End_Date"}),
 
-     Term_UpdateDataEndDate = Table.AddColumn(Term_Remove_Columns, "Data_End_Date", each  DateTime.Date(pWeek),  type date),
-     Term_UpdateDataStartDate = Table.AddColumn(Term_UpdateDataEndDate, "Data_Start_Date", each DateTime.Date(pWeek), type date),
+     Term_UpdateDataEndDate = Table.AddColumn(Term_Remove_Columns, "Data_End_Date", each  DateTime.Date(#"pWeek (4)"),  type date),
+     Term_UpdateDataStartDate = Table.AddColumn(Term_UpdateDataEndDate, "Data_Start_Date", each DateTime.Date(#"pWeek (4)"), type date),
      Term_dup_ESD = Table.DuplicateColumn(Term_UpdateDataStartDate,"Termination Date", "Effective_Start_Date"),
      Term_dup_EED = Table.DuplicateColumn(Term_dup_ESD,"Termination Date", "Effective_End_Date"), 
      Term_final =  Table.RenameColumns(Term_dup_EED, {{"Termination Date","Term"},{"Term_Note_update","Note"}}),
@@ -434,11 +457,14 @@ L_MergedRenamedColumns_final = Table.RenameColumns(
        Term_final
     }),
 
-//Final_Change_Types = Table.TransformColumnTypes(FinalCombine,{{"Hire Date", type date},{"Effective_Start_Date", type date},{"Effective_End_Date", type date}}),
-Final_Change_Types = Table.TransformColumnTypes(FinalCombine,{{"Hire Date", type date}}),
+    //Final_Change_Types = Table.TransformColumnTypes(FinalCombine,{{"Hire Date", type date},{"Effective_Start_Date", type date},{"Effective_End_Date", type date}}),
+    Final_Change_Types = Table.TransformColumnTypes(FinalCombine,{{"Hire Date", type date}}),
 
-FinalSCDTable =  Table.ReorderColumns(
+    FinalSCDTable =  Table.ReorderColumns(
     Final_Change_Types,
-    {"Employee ID", "Data_Start_Date", "Data_End_Date", "Note", "Worker", "Job Title", "Current Work Email", "Email HR Data", "Current_Role", "Hire Date", "Effective_Start_Date", "Effective_End_Date", "Term", "Status", "LOA_Flag", "LOA_Dates", "Commission_Plan_Type", "Region", "District", "Territory", "Worker's Manager(s)", "MNGR_EID", "ORG_CODE", "Salesforce_Code", "Salesforce_Name", "Organization_Code", "Organization_Name", "Parent_Org_Code", "Parent_Org_Name", "Org_Type", "Parent_Org_Type", "Default_Type", "Commission Assignment"} )
+    {"Employee ID", "Data_Start_Date", "Data_End_Date", "Note", "Worker", "Job Title", "Current Work Email", "Email HR Data", "Current_Role",
+     "Hire Date", "Position ID", "Effective_Start_Date", "Effective_End_Date", "Term", "Status", "LOA_Flag", "LOA_Dates", "Commission_Plan_Type", "Region", "District",
+      "Territory", "Worker's Manager(s)", "MNGR_EID", "ORG_CODE", "Salesforce_Code", "Salesforce_Name", "Organization_Code", "Organization_Name", "Parent_Org_Code",
+       "Parent_Org_Name", "Org_Type", "Parent_Org_Type", "Default_Type", "Commission Assignment"} )
 in
-   FinalSCDTable
+    FinalSCDTable
